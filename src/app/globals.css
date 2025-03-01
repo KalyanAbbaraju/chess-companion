@@ -5,17 +5,116 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --muted-foreground: #737373;
+  --border: #e5e7eb;
+  --primary: #4f46e5;
+  --primary-focus: #4338ca;
+  --primary-content: #ffffff;
+  --secondary: #0f172a;
+  --secondary-focus: #1e293b;
+  --secondary-content: #ffffff;
+  --accent: #f59e0b;
+  --accent-focus: #d97706;
+  --accent-content: #ffffff;
+  --neutral: #3d4451;
+  --neutral-focus: #2a2e37;
+  --neutral-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #f9fafb;
+  --base-300: #f3f4f6;
+  --base-content: #1f2937;
+  --info: #3abff8;
+  --success: #36d399;
+  --warning: #fbbd23;
+  --error: #f87272;
+
+  --radius: 0.5rem;
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme="dark"] {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --primary: #818cf8;
+  --primary-focus: #6366f1;
+  --primary-content: #ffffff;
+  --secondary: #1e293b;
+  --secondary-focus: #334155;
+  --secondary-content: #ffffff;
+  --accent: #fbbf24;
+  --accent-focus: #f59e0b;
+  --accent-content: #ffffff;
+  --neutral: #2a2e37;
+  --neutral-focus: #16181d;
+  --neutral-content: #ffffff;
+  --base-100: #1e293b;
+  --base-200: #0f172a;
+  --base-300: #020617;
+  --base-content: #e2e8f0;
+  --info: #0ea5e9;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-primary-content hover:bg-primary-focus;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary text-secondary-content hover:bg-secondary-focus;
+  }
+  
+  .btn-accent {
+    @apply bg-accent text-accent-content hover:bg-accent-focus;
+  }
+  
+  .btn-outline {
+    @apply border border-current bg-transparent hover:bg-accent hover:text-accent-content;
+  }
+  
+  .card {
+    @apply rounded-lg border bg-base-100 shadow-sm;
+  }
+  
+  .container {
+    @apply mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
+
+/* Mobile optimizations */
+input, select, textarea, button {
+  @apply p-2 text-base rounded-md;
+  min-height: 44px; /* Minimum touch target size */
+}
+
+@media (max-width: 640px) {
+  h1 {
+    @apply text-2xl;
+  }
+  
+  h2 {
+    @apply text-xl;
+  }
+  
+  .container {
+    @apply px-4;
+  }
 }
