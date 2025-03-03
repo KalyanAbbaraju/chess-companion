@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+import { DialogProvider } from '@/components/ui/Dialog';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -101,11 +102,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
-        <NavBar />
-        <main className="flex-1">
-          {children}
-        </main>
-        <Footer />
+        <DialogProvider>
+          <NavBar />
+          <main className="flex-1">
+            {children}
+          </main>
+          <Footer />
+        </DialogProvider>
       </body>
     </html>
   );

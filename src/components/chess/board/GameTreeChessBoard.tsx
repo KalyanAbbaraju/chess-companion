@@ -240,77 +240,95 @@ const GameTreeChessBoard: React.FC<GameTreeChessBoardProps> = ({
   
   // Update the handlePositionChange function to set the board move flag
   const handlePositionChange = useCallback((newPosition: string) => {
-    console.log("Position changed:", newPosition);
+    if (currentPosition === newPosition) return; // No change
     
-    // Set flag indicating the move is coming from the board
+    // Detect if this is a user move on the board 
     boardMoveRef.current = true;
     
-    // If we don't have a current node, we're at the start position
-    if (!gameTree.currentNode) {
-      // Create the first move from the starting position
-      const updatedTree = playMove(gameTree, '', findMoveFromPositions(gameTree.rootPosition, newPosition));
-      
-      // Update gameTree state
-      setGameTree(updatedTree);
-      
-      // Notify parent component
-      if (onGameTreeUpdate) {
-        onGameTreeUpdate(updatedTree);
-      }
-      
-      return true;
+    // We need to determine what move was made
+    const chess = new Chess();
+    let moveString = "";
+    
+    // Load the previous position
+    if (gameTree.currentNode && gameTree.moves[gameTree.currentNode]) {
+      // We're at a node, load its position
+      chess.load(gameTree.moves[gameTree.currentNode].fen);
+    } else {
+      // We're at the root position
+      chess.load(gameTree.rootPosition);
     }
     
-    // We have a current node, find what move was made
-    const currentNodeId = gameTree.currentNode;
-    const currentNode = gameTree.moves[currentNodeId];
+    // Find what move would transform the previous position to the new one
+    // We compare positions by playing each legal move and seeing if it matches
+    const legalMoves = chess.moves({ verbose: true });
     
-    if (!currentNode) return false;
-    
-    // Find what move was made to get from current position to new position
-    const moveMade = findMoveFromPositions(currentNode.fen, newPosition);
-    
-    if (!moveMade) {
-      console.error("Could not determine move from position change");
-      return false;
-    }
-    
-    console.log("Move detected:", moveMade);
-    
-    // Play the move and update the tree
-    const updatedTree = playMove(gameTree, currentNodeId, moveMade);
-    
-    // Update gameTree state
-    setGameTree(updatedTree);
-    
-    // Notify parent component
-    if (onGameTreeUpdate) {
-      onGameTreeUpdate(updatedTree);
-    }
-    
-    return true;
-  }, [gameTree, onGameTreeUpdate]);
-  
-  // Helper function to find what move was made between two positions
-  const findMoveFromPositions = (fromFen: string, toFen: string): string => {
-    const chess = new Chess(fromFen);
-    const possibleMoves = chess.moves({ verbose: true });
-    
-    for (const move of possibleMoves) {
-      const testChess = new Chess(fromFen);
+    for (const move of legalMoves) {
+      const testChess = new Chess(chess.fen());
       testChess.move(move);
       
-      // Compare positions (ignoring move counters)
-      const testFenParts = testChess.fen().split(' ');
-      const toFenParts = toFen.split(' ');
-      
-      if (testFenParts[0] === toFenParts[0]) {
-        return move.san;
+      if (testChess.fen() === newPosition) {
+        moveString = move.san;
+        break;
       }
     }
     
-    return '';
-  };
+    if (!moveString) {
+      console.error("Could not determine the move that was made");
+      return;
+    }
+    
+    console.log("User made move:", moveString);
+    
+    // Now update the game tree
+    setGameTree(prevTree => {
+      // Check if we're creating a new variation
+      const isCreatingVariation = shouldCreateVariation(prevTree, moveString);
+      console.log("Creating variation?", isCreatingVariation);
+      
+      const newTree = playMove(prevTree, moveString);
+      
+      // Notify parent component of the update
+      setTimeout(() => onGameTreeUpdate && onGameTreeUpdate(newTree), 0);
+      
+      return newTree;
+    });
+    
+    // Clear any suggested moves
+    setSuggestedMove(null);
+    
+    // Reset the board move flag after a short delay to allow state updates
+    setTimeout(() => { boardMoveRef.current = false; }, 100);
+  }, [currentPosition, gameTree]);
+  
+  // Add a helper function to determine if we should create a variation
+  const shouldCreateVariation = (tree: ChessGameTree, move: string): boolean => {
+    // If we're not at a node, or we're at the end of the main line, it's not a variation
+    if (!tree.currentNode) return false;
+    
+    const currentNode = tree.moves[tree.currentNode];
+    if (!currentNode) return false;
+    
+    // Check if this is the last node in the main line
+    const isLastInMainLine = 
+      tree.mainLine.length > 0 && 
+      tree.mainLine[tree.mainLine.length - 1] === tree.currentNode;
+    
+    if (isLastInMainLine) return false;
+    
+    // Check if the move already exists in the next move of the main line
+    const currentIndex = tree.mainLine.indexOf(tree.currentNode);
+    if (currentIndex >= 0 && currentIndex < tree.mainLine.length - 1) {
+      const nextNodeId = tree.mainLine[currentIndex + 1];
+      const nextNode = tree.moves[nextNodeId];
+      if (nextNode && nextNode.move === move) {
+        // This is just navigating to the next move in the main line
+        return false;
+      }
+    }
+    
+    // Otherwise, we're creating a variation
+    return true;
+  }
   
   // Handle creating a variation
   const handleCreateVariation = useCallback((parentId: string, move: string) => {
@@ -497,6 +515,65 @@ const GameTreeChessBoard: React.FC<GameTreeChessBoardProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleKeyDown]); // Only depend on the memoized handler
+  
+  // Add this after the existing imports
+  const debugGameTree = (gameTree: ChessGameTree) => {
+    console.log("GAME TREE DEBUG:");
+    console.log("Current node:", gameTree.currentNode);
+    console.log("Main line:", gameTree.mainLine);
+    console.log("Moves:", Object.keys(gameTree.moves).length);
+    
+    // Check variations
+    let variationsCount = 0;
+    Object.values(gameTree.moves).forEach(node => {
+      if (node.variations && node.variations.length > 0) {
+        variationsCount += node.variations.length;
+        console.log(`Node ${node.id} (${node.move}) has ${node.variations.length} variations:`, 
+          node.variations.map(v => Array.isArray(v) ? v[0] : v.moves?.[0]));
+      }
+    });
+    console.log("Total variations:", variationsCount);
+  };
+  
+  // Call this inside the handlePositionChange function, right after making the move:
+  setTimeout(() => {
+    debugGameTree(gameTree);
+  }, 200);
+  
+  // Add a debug function to check variations after each move
+  const debugVariations = (gameTree: ChessGameTree) => {
+    console.log("======= VARIATIONS DEBUG =======");
+    let totalVariations = 0;
+    
+    gameTree.mainLine.forEach(nodeId => {
+      const node = gameTree.moves[nodeId];
+      if (node && node.variations && node.variations.length > 0) {
+        totalVariations += node.variations.length;
+        console.log(`Node ${nodeId} (${node.move}) has ${node.variations.length} variations:`);
+        
+        node.variations.forEach((variation, idx) => {
+          console.log(`  Variation ${idx} format:`, variation);
+          
+          const moveIds = Array.isArray(variation) ? variation : (variation.moves || []);
+          if (moveIds.length > 0) {
+            const firstMoveId = moveIds[0];
+            const firstMove = gameTree.moves[firstMoveId];
+            console.log(`  First move: ${firstMoveId} -> ${firstMove ? firstMove.move : 'NOT FOUND'}`);
+          } else {
+            console.log(`  Empty variation`);
+          }
+        });
+      }
+    });
+    
+    console.log(`Total variations: ${totalVariations}`);
+    console.log("===============================");
+  };
+  
+  // Call this in handlePositionChange after updating the game tree
+  setTimeout(() => {
+    debugVariations(gameTree);
+  }, 50);
   
   return (
     <div className="card bg-white shadow-md">

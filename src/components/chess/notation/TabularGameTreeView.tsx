@@ -110,9 +110,7 @@ const TabularGameTreeView: React.FC<TabularGameTreeViewProps> = ({
     }
   }, [gameTree.currentNode, gameTree._suppressFocus]);
   
-  // Add the missing getSubVariations function
-
-  // Define this helper function within the component, before it's used
+  // Fix the getSubVariations function to correctly extract variations
   const getSubVariations = (parentNodeId: string) => {
     // Return an array of variations that have parentNodeId as their parent
     const subVars: { nodeIds: string[], parentNodeId: string }[] = [];
@@ -125,9 +123,17 @@ const TabularGameTreeView: React.FC<TabularGameTreeViewProps> = ({
     
     // Add all variations for this node
     node.variations.forEach(variation => {
-      if (variation && variation.moves && variation.moves.length > 0) {
+      // Debug what variation structure we actually have
+      console.log("Variation in TabularView:", variation);
+      
+      // Handle both array-of-strings and object-with-moves formats
+      const moveIds = Array.isArray(variation) 
+        ? variation                 // If variation is already an array of strings
+        : (variation.moves || []);  // Or use the moves property if it exists
+      
+      if (moveIds && moveIds.length > 0) {
         subVars.push({
-          nodeIds: variation.moves,
+          nodeIds: moveIds,
           parentNodeId
         });
       }

@@ -169,105 +169,69 @@ export function convertGameTreeToMoves(gameTree: ChessGameTree): ChessMove[] {
 // Create a new variation from a given position
 export function createVariation(
   gameTree: ChessGameTree,
-  parentNodeId: string,
+  parentId: string,
   move: string
 ): ChessGameTree {
   // Clone the tree to avoid mutations
-  const updatedTree: ChessGameTree = {
-    ...gameTree,
-    moves: { ...gameTree.moves },
-    mainLine: [...gameTree.mainLine]
-  };
+  const updatedMoves = { ...gameTree.moves };
   
-  const parentNode = updatedTree.moves[parentNodeId];
+  // Get the parent node
+  const parentNode = updatedMoves[parentId];
   if (!parentNode) {
-    console.error("Failed to create variation: Parent node not found:", parentNodeId);
-    return gameTree; // No change if parent not found
-  }
-  
-  // Check if this variation already exists
-  for (const variation of parentNode.variations) {
-    if (variation.length > 0) {
-      const firstMove = variation[0];
-      if (firstMove.move === move) {
-        console.log("Variation already exists, navigating to it:", move);
-        // This variation already exists, just navigate to it
-        return {
-          ...gameTree,
-          currentNode: firstMove.id
-        };
-      }
-    }
-  }
-  
-  // Create a chess instance from the parent position
-  const chess = new Chess(parentNode.fen);
-  
-  try {
-    console.log("Attempting to create variation with move:", move, "from position:", parentNode.fen);
-    // Try to make the move
-    const result = chess.move(move);
-    
-    if (!result) {
-      console.warn("Invalid move when creating variation:", move);
-      return gameTree; // No change if move is invalid
-    }
-    
-    console.log("Successfully made move:", move, "resulting in position:", chess.fen());
-    
-    // Create the new variation node
-    const newNodeId = uuidv4();
-    const newNode: ChessMoveNode = {
-      id: newNodeId,
-      moveNumber: parentNode.moveNumber + (parentNode.color === 'w' ? 0 : 1),
-      move: result.san, // Use validated SAN notation
-      color: parentNode.color === 'w' ? 'b' : 'w',
-      fen: chess.fen(),
-      isMainLine: false,
-      parentId: parentNodeId,
-      variations: []
-    };
-    
-    // Create a separate deep copy of the node for the variations array
-    // This is important to prevent reference sharing issues
-    const newNodeForVariation: ChessMoveNode = {
-      ...newNode,
-      variations: [] // Empty variations array
-    };
-    
-    // Add the node to the tree
-    updatedTree.moves[newNodeId] = newNode;
-    
-    // Create a new variations array with the new variation added
-    // Using a proper deep copy to avoid reference issues
-    const newVariations = parentNode.variations.map(v => 
-      v.map(n => ({...n}))
-    );
-    
-    // Add the new variation
-    newVariations.push([newNodeForVariation]);
-    
-    // Add the variation to the parent with a completely new reference
-    const updatedParent = {
-      ...parentNode,
-      variations: newVariations
-    };
-    
-    // Update the parent node in the tree
-    updatedTree.moves[parentNodeId] = updatedParent;
-    
-    // Set as current node
-    updatedTree.currentNode = newNodeId;
-    
-    console.log("Created variation node:", newNode);
-    console.log("Parent variations count:", updatedParent.variations.length);
-    
-    return updatedTree;
-  } catch (e) {
-    // Invalid move
-    console.error("Error creating variation:", e);
+    console.error("Parent node not found:", parentId);
     return gameTree;
   }
+  
+  // Create a chess instance with the parent position
+  const chess = new Chess();
+  chess.load(parentNode.fen);
+  
+  // Try to make the move
+  const chessMove = chess.move(move);
+  if (!chessMove) {
+    console.error("Invalid move for variation:", move);
+    return gameTree;
+  }
+  
+  // Generate a new ID for this move
+  const newNodeId = uuidv4();
+  
+  // Create the new variation node
+  const newNode: ChessMoveNode = {
+    id: newNodeId,
+    moveNumber: chess.moveNumber(),
+    move: chessMove.san,
+    color: chessMove.color,
+    fen: chess.fen(),
+    isMainLine: false,
+    parentId: parentId,
+    variations: []
+  };
+  
+  // Add the new node to the moves object
+  updatedMoves[newNodeId] = newNode;
+  
+  // Add this new move as a variation of the parent
+  const updatedParentNode = {
+    ...parentNode,
+    variations: [
+      ...(parentNode.variations || []),
+      [newNodeId] // Add as a simple array of IDs for consistency
+    ]
+  };
+  
+  // Update the parent node in the moves object
+  updatedMoves[parentId] = updatedParentNode;
+  
+  console.log(`Created variation ${move} (${newNodeId}) for parent ${parentId}`);
+  console.log("Updated parent variations:", updatedParentNode.variations);
+  
+  // Return the updated game tree
+  return {
+    ...gameTree,
+    moves: updatedMoves,
+    currentNode: newNodeId
+  };
 }
 
 // Promote a variation to become the main line
@@ -327,144 +291,286 @@ export function addComment(
   return updatedTree;
 }
 
-// Complete the playMove function to handle all cases
-export function playMove(
-  gameTree: ChessGameTree,
-  fromNodeId: string,
-  move: string
-): ChessGameTree {
-  console.log(`1. Playing move "${move}" from node "${fromNodeId}"`);
+// Fix the playMove function to correctly handle variations
+export function playMove(gameTree: ChessGameTree, move: string): ChessGameTree {
+  const chess = new Chess();
   
-  const node = gameTree.moves[fromNodeId];
-  if (!node) {
-    console.error("Node not found:", fromNodeId);
-    return gameTree;
-  }
-  
-  const chess = new Chess(node.fen);
-  const result = chess.move(move);
-  if (!result) {
-    console.error("Invalid move:", move);
-    return gameTree;
-  }
-  
-  const newNodeId = uuidv4();
-  const newNode: ChessMoveNode = {
-    id: newNodeId,
-    move: move,
-    fen: chess.fen(),
-    moveNumber: node.moveNumber + (node.color === 'w' ? 0 : 1),
-    color: node.color === 'w' ? 'b' : 'w',
-    isMainLine: true,
-    parentId: fromNodeId,
-    variations: []
-  };
-  
-  console.log(`2. New node created:`, newNode);
-  
-  const updatedMoves = {
-    ...gameTree.moves,
-    [newNodeId]: newNode,
-  };
-
-  // Check if we're at the end of the main line
-  const isLastNodeInMainLine = gameTree.mainLine[gameTree.mainLine.length - 1] === fromNodeId;
-  
-  // Check if the node is part of any variation and if it's the last node in that variation
-  let isLastNodeInVariation = false;
-  let variationInfo = null;
-  
-  // Check if the node is in the middle of the main line
-  const mainLineIndex = gameTree.mainLine.indexOf(fromNodeId);
-  const isInMiddleOfMainLine = mainLineIndex >= 0 && mainLineIndex < gameTree.mainLine.length - 1;
-  
-  // Find if the node is part of any variation and its position
-  let isInVariation = false;
-  let isInMiddleOfVariation = false;
-  let variationPath = null;
-  
-  // Traverse all nodes with variations to find where our node is
-  Object.values(gameTree.moves).forEach(parentNode => {
+  if (gameTree.currentNode) {
+    // We're at a node, need to determine if it's the last in its line
+    const currentNode = gameTree.moves[gameTree.currentNode];
+    
+    // Load the position from this node
+    chess.load(currentNode.fen);
+    
+    // Try to make the move
+    const chessMove = chess.move(move);
+    if (!chessMove) {
+      console.error("Invalid move:", move);
+      return gameTree;
+    }
+    
+    // Generate a new ID for this move
+    const newNodeId = uuidv4();
+    
+    // Create the new node
+    const newNode: ChessMoveNode = {
+      id: newNodeId,
+      moveNumber: chess.moveNumber(),
+      move: chessMove.san,
+      color: chessMove.color,
+      fen: chess.fen(),
+      isMainLine: false,  // We'll determine this later
+      parentId: gameTree.currentNode,
+      variations: []
+    };
+    
+    // Check if this node is the last in the main line
+    const isLastInMainLine = 
+      gameTree.mainLine.length > 0 && 
+      gameTree.mainLine[gameTree.mainLine.length - 1] === gameTree.currentNode;
+    
+    // Check if we're at the end of a variation
+    let isLastInVariation = false;
+    let variationPath: string[] = [];
+    
+    if (!isLastInMainLine) {
+      // Check if we're in a variation and at its end
+      variationPath = findVariationPath(gameTree, gameTree.currentNode);
+      isLastInVariation = variationPath.length > 0 && 
+        variationPath[variationPath.length - 1] === gameTree.currentNode;
+    }
+    
+    // Check if this move already exists in one of the variations
+    const parentNode = gameTree.moves[gameTree.currentNode];
+    let existingVariationNode = null;
+    
     if (parentNode.variations && parentNode.variations.length > 0) {
-      parentNode.variations.forEach((variation, varIndex) => {
-        if (variation.moves && variation.moves.length > 0) {
-          // Check if this node is in this variation
-          const nodeIndex = variation.moves.indexOf(fromNodeId);
-          if (nodeIndex >= 0) {
-            isInVariation = true;
-            
-            // Check if it's the last node in the variation
-            if (nodeIndex === variation.moves.length - 1) {
-              isLastNodeInVariation = true;
-              variationInfo = { parentId: parentNode.id, variationIndex: varIndex };
-            } else {
-              // It's in the middle of a variation
-              isInMiddleOfVariation = true;
-              variationPath = { 
-                parentId: parentNode.id, 
-                variationIndex: varIndex, 
-                nodeIndex: nodeIndex 
-              };
-            }
+      // Look for a variation that starts with this move
+      for (const variation of parentNode.variations) {
+        if (!variation || variation.length === 0) continue;
+        
+        let firstMoveId: string | undefined;
+        
+        if (Array.isArray(variation)) {
+          firstMoveId = variation[0];
+        } else if (variation.moves && variation.moves.length > 0) {
+          firstMoveId = variation.moves[0];
+        }
+        
+        if (firstMoveId) {
+          const firstMove = gameTree.moves[firstMoveId];
+          if (firstMove && firstMove.move === move) {
+            existingVariationNode = firstMoveId;
+            break;
           }
         }
-      });
+      }
+      
+      if (existingVariationNode) {
+        console.log("Variation already exists, navigating to it:", move);
+        return {
+          ...gameTree,
+          currentNode: existingVariationNode
+        };
+      }
     }
-  });
-  
-  // Case 1: Node is at the end of the main line - extend the main line
-  if (isLastNodeInMainLine) {
-    console.log(`3. Extending main line with new node ID: ${newNodeId}`);
-    return {
-      ...gameTree,
-      moves: updatedMoves,
-      mainLine: [...gameTree.mainLine, newNodeId],
-      currentNode: newNodeId
-    };
-  }
-  // Case 2: Node is at the end of a variation - extend that variation
-  else if (isLastNodeInVariation && variationInfo) {
-    console.log(`4. Extending variation at path:`, variationInfo);
     
-    const parentNode = gameTree.moves[variationInfo.parentId];
-    const updatedVariations = [...parentNode.variations];
-    updatedVariations[variationInfo.variationIndex].moves.push(newNodeId);
-    
-    updatedMoves[variationInfo.parentId] = {
-      ...parentNode,
-      variations: updatedVariations
+    // Update the moves object with the new node
+    const updatedMoves = {
+      ...gameTree.moves,
+      [newNodeId]: newNode
     };
     
-    return {
-      ...gameTree,
-      moves: updatedMoves,
-      currentNode: newNodeId
-    };
-  }
-  // Case 3: Node is in the middle of EITHER the main line OR a variation - create a new branch
-  else {
-    console.log(`5. Creating a new variation from node ID: ${fromNodeId} (in ${isInMiddleOfVariation ? 'variation' : 'main line'})`);
-    
-    // Create a new variation starting from the clicked node
-    const updatedNode = {
-      ...node,
-      variations: [
-        ...node.variations,
-        {
-          id: uuidv4(),
-          moves: [newNodeId]
+    // Decide where to add this move based on our position
+    if (isLastInMainLine) {
+      // If this move is from the last move in the main line, add it to the main line
+      console.log("Adding move to end of main line:", move);
+      newNode.isMainLine = true;
+      
+      return {
+        ...gameTree,
+        moves: updatedMoves,
+        mainLine: [...gameTree.mainLine, newNodeId],
+        currentNode: newNodeId
+      };
+    } else if (isLastInVariation) {
+      // We're at the end of a variation, append to it
+      console.log("Appending move to end of variation:", move);
+      
+      // Find the parent variation in the tree
+      const parentId = variationPath[variationPath.length - 2]; // Get the variation parent
+      const parentNode = gameTree.moves[parentId];
+      
+      if (!parentNode) {
+        console.error("Could not find parent node for variation");
+        return gameTree;
+      }
+      
+      // Find the variation array that contains our current node
+      const variationIndex = parentNode.variations.findIndex(v => {
+        if (Array.isArray(v)) {
+          return v.includes(gameTree.currentNode);
+        } else if (v.moves) {
+          return v.moves.includes(gameTree.currentNode);
         }
-      ]
+        return false;
+      });
+      
+      if (variationIndex === -1) {
+        console.error("Could not find variation for current node");
+        return gameTree;
+      }
+      
+      // Get the variation
+      const variation = parentNode.variations[variationIndex];
+      let updatedVariation;
+      
+      if (Array.isArray(variation)) {
+        updatedVariation = [...variation, newNodeId];
+      } else if (variation.moves) {
+        updatedVariation = { ...variation, moves: [...variation.moves, newNodeId] };
+      } else {
+        console.error("Unknown variation format");
+        return gameTree;
+      }
+      
+      // Update the parent node's variations
+      const updatedVariations = [...parentNode.variations];
+      updatedVariations[variationIndex] = updatedVariation;
+      
+      const updatedParentNode = {
+        ...parentNode,
+        variations: updatedVariations
+      };
+      
+      updatedMoves[parentId] = updatedParentNode;
+      
+      return {
+        ...gameTree,
+        moves: updatedMoves,
+        currentNode: newNodeId
+      };
+    } else {
+      // Create a new variation - we're in the middle of a line
+      console.log("Creating new variation from middle of line:", move);
+      
+      // Create a proper variation format that all components can read
+      const updatedParentNode = {
+        ...parentNode,
+        variations: [
+          ...(parentNode.variations || []), 
+          [newNodeId] // Variations are ALWAYS arrays of move IDs
+        ]
+      };
+      
+      updatedMoves[gameTree.currentNode] = updatedParentNode;
+      
+      return {
+        ...gameTree,
+        moves: updatedMoves,
+        currentNode: newNodeId
+      };
+    }
+  } else {
+    // We're at the root position, add the first move
+    chess.load(gameTree.rootPosition);
+    
+    // Try to make the move
+    const chessMove = chess.move(move);
+    if (!chessMove) {
+      console.error("Invalid move:", move);
+      return gameTree;
+    }
+    
+    // Generate a new ID for this move
+    const newNodeId = uuidv4();
+    
+    // Create the new node
+    const newNode: ChessMoveNode = {
+      id: newNodeId,
+      moveNumber: chess.moveNumber(),
+      move: chessMove.san,
+      color: chessMove.color,
+      fen: chess.fen(),
+      isMainLine: true,
+      parentId: null,
+      variations: []
     };
     
-    updatedMoves[fromNodeId] = updatedNode;
-    
+    // Add this node to the moves and main line
     return {
       ...gameTree,
-      moves: updatedMoves,
+      moves: {
+        ...gameTree.moves,
+        [newNodeId]: newNode
+      },
+      mainLine: [newNodeId],
       currentNode: newNodeId
     };
   }
+}
+
+// Helper function to find the path to a node in variations
+function findVariationPath(gameTree: ChessGameTree, nodeId: string): string[] {
+  // If the node is in the main line, it's not in a variation
+  if (gameTree.mainLine.includes(nodeId)) {
+    return [];
+  }
+  
+  // DFS to find the path to this node
+  const path: string[] = [];
+  
+  function dfs(currentId: string): boolean {
+    path.push(currentId);
+    
+    if (currentId === nodeId) {
+      return true;
+    }
+    
+    const node = gameTree.moves[currentId];
+    if (!node) {
+      path.pop();
+      return false;
+    }
+    
+    // Check children in the main line first
+    const mainLineIndex = gameTree.mainLine.indexOf(currentId);
+    if (mainLineIndex >= 0 && mainLineIndex < gameTree.mainLine.length - 1) {
+      const nextId = gameTree.mainLine[mainLineIndex + 1];
+      if (dfs(nextId)) {
+        return true;
+      }
+    }
+    
+    // Check variations
+    if (node.variations) {
+      for (const variation of node.variations) {
+        if (!variation) continue;
+        
+        const variationNodes = Array.isArray(variation) ? 
+          variation : (variation.moves || []);
+        
+        for (const varNodeId of variationNodes) {
+          if (dfs(varNodeId)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    path.pop();
+    return false;
+  }
+  
+  // Start with nodes in the main line
+  for (const mainNodeId of gameTree.mainLine) {
+    path.length = 0; // Clear the path
+    if (dfs(mainNodeId)) {
+      return path;
+    }
+  }
+  
+  return [];
 }
 
 const handlePositionChange = (newPosition: string) => {
